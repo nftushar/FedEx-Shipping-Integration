@@ -7,40 +7,45 @@
 
 namespace FedEx\Admin;
 
-use FedEx\Services\ApiService;
-use FedEx\Config\Configuration;
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
 
 /**
- * Settings page for FedEx admin
+ * Admin settings page for FedEx OAuth configuration
  */
 class SettingsPage {
 
 	/**
-	 * API service
+	 * Menu slug
 	 *
-	 * @var ApiService
+	 * @var string
 	 */
-	private $api;
-
-	/**
-	 * Configuration
-	 *
-	 * @var Configuration
-	 */
-	private $config;
+	private $menu_slug = 'fedex-settings';
 
 	/**
 	 * Constructor
-	 *
-	 * @param ApiService     $api    API service
-	 * @param Configuration  $config Configuration
 	 */
-	public function __construct( ApiService $api, Configuration $config ) {
-		$this->api = $api;
-		$this->config = $config;
-
-		add_action( 'admin_init', array( $this, 'register_settings' ) );
+	public function __construct() {
 		add_action( 'admin_menu', array( $this, 'add_menu' ) );
+		add_action( 'admin_init', array( $this, 'register_settings' ) );
+	}
+
+	/**
+	 * Add WordPress admin menu
+	 *
+	 * @return void
+	 */
+	public function add_menu() {
+		add_menu_page(
+			'FedEx OAuth Settings',           // Page title
+			'FedEx OAuth',                    // Menu title
+			'manage_options',                 // Capability
+			$this->menu_slug,                 // Menu slug
+			array( $this, 'render_page' ),   // Callback
+			'dashicons-share',                // Icon
+			99                                // Position
+		);
 	}
 
 	/**
@@ -49,157 +54,106 @@ class SettingsPage {
 	 * @return void
 	 */
 	public function register_settings() {
-		$settings = array(
-			'client_id',
-			'client_secret',
-			'grant_type',
-			'child_key',
-			'child_secret',
-			'account_number',
-			'meter_number',
-			'environment',
-		);
-
-		foreach ( $settings as $setting ) {
-			register_setting( 'fedex_settings', 'fedex_' . $setting );
-		}
+		register_setting( 'fedex_settings_group', 'fedex_client_id' );
+		register_setting( 'fedex_settings_group', 'fedex_client_secret' );
+		register_setting( 'fedex_settings_group', 'fedex_environment' );
+		register_setting( 'fedex_settings_group', 'fedex_grant_type' );
 	}
 
 	/**
-	 * Add admin menu
-	 *
-	 * @return void
-	 */
-	public function add_menu() {
-		add_menu_page(
-			'FedEx Shipping',
-			'FedEx Shipping',
-			'manage_options',
-			'fedex-settings',
-			array( $this, 'render_settings' ),
-			'dashicons-truck',
-			56
-		);
-
-		add_submenu_page(
-			'fedex-settings',
-			'Get Rates',
-			'Get Rates',
-			'manage_options',
-			'fedex-rates',
-			array( $this, 'render_rates' )
-		);
-
-		add_submenu_page(
-			'fedex-settings',
-			'Track Shipment',
-			'Track Shipment',
-			'manage_options',
-			'fedex-track',
-			array( $this, 'render_track' )
-		);
-	}
-
-	/**
-	 * Render main page
+	 * Render settings page HTML
 	 *
 	 * @return void
 	 */
 	public function render_page() {
-		if ( isset( $_GET['page'] ) && $_GET['page'] === 'fedex-settings' ) {
-			$this->render_settings();
-		}
-	}
-
-	/**
-	 * Render settings page
-	 *
-	 * @return void
-	 */
-	public function render_settings() {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Unauthorized' );
+			wp_die( esc_html__( 'Unauthorized', 'fedex-shipping' ) );
 		}
 
-		// Handle test connection
-		if ( isset( $_POST['fedex_test_connection'] ) && $this->verify_nonce() ) {
-			$this->config->get_options_from_post();
-			$connected = $this->api->test_connection();
-			$this->show_notice( $connected );
-		}
+		$client_id = get_option( 'fedex_client_id' );
+		$client_secret = get_option( 'fedex_client_secret' );
+		$environment = get_option( 'fedex_environment', 'sandbox' );
+		$grant_type = get_option( 'fedex_grant_type', 'client_credentials' );
 		?>
 		<div class="wrap">
-			<h1><?php echo esc_html( get_admin_page_title() ); ?></h1>
+			<h1><?php esc_html_e( 'FedEx OAuth Settings', 'fedex-shipping' ); ?></h1>
+			<p><?php esc_html_e( 'Configure your FedEx OAuth 2.0 credentials for API authentication.', 'fedex-shipping' ); ?></p>
 
-			<form method="post" action="options.php">
-				<?php settings_fields( 'fedex_settings' ); ?>
+			<form method="POST" action="options.php">
+				<?php settings_fields( 'fedex_settings_group' ); ?>
 
 				<table class="form-table">
 					<tr>
-						<th><label for="fedex_environment">Environment</label></th>
+						<th scope="row">
+							<label for="fedex_environment">
+								<?php esc_html_e( 'Environment', 'fedex-shipping' ); ?>
+							</label>
+						</th>
 						<td>
-							<select id="fedex_environment" name="fedex_environment">
-								<option value="sandbox" <?php selected( $this->config->get_environment(), 'sandbox' ); ?>>Sandbox (Testing)</option>
-								<option value="production" <?php selected( $this->config->get_environment(), 'production' ); ?>>Production (Live)</option>
+							<select name="fedex_environment" id="fedex_environment">
+								<option value="sandbox" <?php selected( $environment, 'sandbox' ); ?>>
+									<?php esc_html_e( 'Sandbox (Testing)', 'fedex-shipping' ); ?>
+								</option>
+								<option value="production" <?php selected( $environment, 'production' ); ?>>
+									<?php esc_html_e( 'Production (Live)', 'fedex-shipping' ); ?>
+								</option>
 							</select>
-							<p class="description">Sandbox uses testing API, Production uses live API</p>
+							<p class="description">
+								<?php esc_html_e( 'Select sandbox for testing, production for live API calls.', 'fedex-shipping' ); ?>
+							</p>
 						</td>
 					</tr>
 
 					<tr>
-						<th><label for="fedex_client_id">Client ID (API Key)</label></th>
+						<th scope="row">
+							<label for="fedex_grant_type">
+								<?php esc_html_e( 'Grant Type', 'fedex-shipping' ); ?>
+							</label>
+						</th>
 						<td>
-							<input type="text" id="fedex_client_id" name="fedex_client_id" value="<?php echo esc_attr( $this->config->get_client_id() ); ?>" class="regular-text" required />
-							<p class="description">From FedEx Developer Portal</p>
-						</td>
-					</tr>
-
-					<tr>
-						<th><label for="fedex_client_secret">Client Secret (Secret Key)</label></th>
-						<td>
-							<input type="password" id="fedex_client_secret" name="fedex_client_secret" value="<?php echo esc_attr( $this->config->get_client_secret() ); ?>" class="regular-text" required />
-							<p class="description">From FedEx Developer Portal</p>
-						</td>
-					</tr>
-
-					<tr>
-						<th><label for="fedex_grant_type">Grant Type</label></th>
-						<td>
-							<select id="fedex_grant_type" name="fedex_grant_type">
-								<option value="client_credentials" <?php selected( $this->config->get_grant_type(), 'client_credentials' ); ?>>Client Credentials</option>
-								<option value="csp_credentials" <?php selected( $this->config->get_grant_type(), 'csp_credentials' ); ?>>CSP Credentials</option>
-								<option value="client_pc_credentials" <?php selected( $this->config->get_grant_type(), 'client_pc_credentials' ); ?>>Parent Child Credentials</option>
+							<select name="fedex_grant_type" id="fedex_grant_type">
+								<option value="client_credentials" <?php selected( $grant_type, 'client_credentials' ); ?>>
+									<?php esc_html_e( 'Client Credentials', 'fedex-shipping' ); ?>
+								</option>
+								<option value="csp_credentials" <?php selected( $grant_type, 'csp_credentials' ); ?>>
+									<?php esc_html_e( 'CSP Credentials', 'fedex-shipping' ); ?>
+								</option>
 							</select>
+							<p class="description">
+								<?php esc_html_e( 'Usually client_credentials unless you have CSP account.', 'fedex-shipping' ); ?>
+							</p>
 						</td>
 					</tr>
 
 					<tr>
-						<th><label for="fedex_child_key">Child Key (optional)</label></th>
+						<th scope="row">
+							<label for="fedex_client_id">
+								<?php esc_html_e( 'Client ID', 'fedex-shipping' ); ?>
+							</label>
+						</th>
 						<td>
-							<input type="text" id="fedex_child_key" name="fedex_child_key" value="<?php echo esc_attr( $this->config->get_child_key() ); ?>" class="regular-text" />
-							<p class="description">Required for CSP/Parent-Child accounts</p>
+							<input type="text" name="fedex_client_id" id="fedex_client_id" 
+								value="<?php echo esc_attr( $client_id ); ?>" 
+								class="regular-text" />
+							<p class="description">
+								<?php esc_html_e( 'Your FedEx OAuth 2.0 Client ID', 'fedex-shipping' ); ?>
+							</p>
 						</td>
 					</tr>
 
 					<tr>
-						<th><label for="fedex_child_secret">Child Secret (optional)</label></th>
+						<th scope="row">
+							<label for="fedex_client_secret">
+								<?php esc_html_e( 'Client Secret', 'fedex-shipping' ); ?>
+							</label>
+						</th>
 						<td>
-							<input type="password" id="fedex_child_secret" name="fedex_child_secret" value="<?php echo esc_attr( $this->config->get_child_secret() ); ?>" class="regular-text" />
-							<p class="description">Required for CSP/Parent-Child accounts</p>
-						</td>
-					</tr>
-
-					<tr>
-						<th><label for="fedex_account_number">Account Number</label></th>
-						<td>
-							<input type="text" id="fedex_account_number" name="fedex_account_number" value="<?php echo esc_attr( $this->config->get_account_number() ); ?>" class="regular-text" />
-						</td>
-					</tr>
-
-					<tr>
-						<th><label for="fedex_meter_number">Meter Number</label></th>
-						<td>
-							<input type="text" id="fedex_meter_number" name="fedex_meter_number" value="<?php echo esc_attr( $this->config->get_meter_number() ); ?>" class="regular-text" />
+							<input type="password" name="fedex_client_secret" id="fedex_client_secret" 
+								value="<?php echo esc_attr( $client_secret ); ?>" 
+								class="regular-text" />
+							<p class="description">
+								<?php esc_html_e( 'Your FedEx OAuth 2.0 Client Secret', 'fedex-shipping' ); ?>
+							</p>
 						</td>
 					</tr>
 				</table>
@@ -207,84 +161,16 @@ class SettingsPage {
 				<?php submit_button(); ?>
 			</form>
 
-			<hr />
-			<h3>Test Connection</h3>
-			<form method="post" action="">
-				<?php wp_nonce_field( 'fedex_test' ); ?>
-				<input type="hidden" name="fedex_test_connection" value="1" />
-				<button type="submit" class="button button-secondary">Test OAuth Connection</button>
-			</form>
-
-			<hr />
-			<h3>API Endpoints</h3>
-			<p>
-				<strong>Sandbox:</strong><br>
-				OAuth: <code>https://apis-sandbox.fedex.com/oauth/token</code><br>
-				API: <code>https://apis-sandbox.fedex.com</code>
-			</p>
-			<p>
-				<strong>Production:</strong><br>
-				OAuth: <code>https://apis.fedex.com/oauth/token</code><br>
-				API: <code>https://apis.fedex.com</code>
-			</p>
+			<hr>
+			<h2><?php esc_html_e( 'How to Get Credentials', 'fedex-shipping' ); ?></h2>
+			<ol>
+				<li><?php esc_html_e( 'Visit: https://developer.fedex.com', 'fedex-shipping' ); ?></li>
+				<li><?php esc_html_e( 'Create a developer account', 'fedex-shipping' ); ?></li>
+				<li><?php esc_html_e( 'Create an application', 'fedex-shipping' ); ?></li>
+				<li><?php esc_html_e( 'Generate OAuth 2.0 credentials', 'fedex-shipping' ); ?></li>
+				<li><?php esc_html_e( 'Paste Client ID and Secret above', 'fedex-shipping' ); ?></li>
+			</ol>
 		</div>
 		<?php
-	}
-
-	/**
-	 * Render rates page
-	 *
-	 * @return void
-	 */
-	public function render_rates() {
-		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Unauthorized' );
-		}
-		?>
-		<div class="wrap">
-			<h1><?php echo esc_html( get_admin_page_title() ); ?></h1>
-			<p>Rate calculation tool coming soon</p>
-		</div>
-		<?php
-	}
-
-	/**
-	 * Render track page
-	 *
-	 * @return void
-	 */
-	public function render_track() {
-		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Unauthorized' );
-		}
-		?>
-		<div class="wrap">
-			<h1><?php echo esc_html( get_admin_page_title() ); ?></h1>
-			<p>Shipment tracking tool coming soon</p>
-		</div>
-		<?php
-	}
-
-	/**
-	 * Verify nonce
-	 *
-	 * @return bool
-	 */
-	private function verify_nonce() {
-		return isset( $_POST['_wpnonce'] ) && wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['_wpnonce'] ) ), 'fedex_test' );
-	}
-
-	/**
-	 * Show notice
-	 *
-	 * @param bool $success Success status
-	 * @return void
-	 */
-	private function show_notice( $success ) {
-		if ( $success ) {
-			echo '<div class="notice notice-success"><p>✓ Connection successful!</p></div>';
-		} else {
-			echo '<div class="notice notice-error"><p>✗ Connection failed.</p></div>';
-		}
 	}
 }

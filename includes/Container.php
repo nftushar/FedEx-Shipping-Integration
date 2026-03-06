@@ -115,12 +115,7 @@ class Container {
 
 		// Initialize admin
 		if ( is_admin() ) {
-			new Admin\SettingsPage( $this->get( 'api' ), $this->get( 'config' ) );
-		}
-
-		// Initialize WooCommerce integration
-		if ( class_exists( 'WC_Shipping_Method' ) ) {
-			new WooCommerce\ShippingMethod( $this->get( 'api' ) );
+			new Admin\SettingsPage();
 		}
 	}
 }
